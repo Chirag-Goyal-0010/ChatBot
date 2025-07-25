@@ -1,0 +1,25 @@
+<h1 class="text-2xl font-bold mb-6">Submit a Website URL</h1>
+
+<%= form_with model: @website, local: true do |form| %>
+  <div class="mb-4">
+    <%= form.label :url, class: "block text-gray-700" %>
+    <%= form.text_field :url, class: "mt-1 block w-full border border-gray-300 rounded px-3 py-2" %>
+  </div>
+  <div class="mb-4">
+    <%= form.label :status, class: "block text-gray-700" %>
+    <%= form.text_field :status, class: "mt-1 block w-full border border-gray-300 rounded px-3 py-2" %>
+  </div>
+  <%= form.submit "Submit", class: "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" %>
+<% end %>
+
+<% if @website.errors.any? %>
+  <div class="mt-4 text-red-600">
+    <ul>
+      <% @website.errors.full_messages.each do |msg| %>
+        <li><%= msg %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<%= link_to 'View Submitted URLs', websites_path, class: "inline-block mt-6 text-blue-600 hover:underline" %>

@@ -1,0 +1,21 @@
+<div class="max-w-3xl mx-auto p-6">
+  <% if flash[:alert] %>
+    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6 shadow">
+      <%= flash[:alert] %>
+    </div>
+  <% end %>
+
+  <% if @chunks && @chunks.any? %>
+    <h2 class="text-xl font-bold mb-4">Relevant Information:</h2>
+    <ul class="space-y-4">
+      <% @chunks.each do |chunk| %>
+        <li class="bg-gray-50 border border-gray-200 rounded p-4">
+          <% if chunk.section.present? %>
+            <div class="font-semibold text-gray-700 mb-1"><%= chunk.section %></div>
+          <% end %>
+          <div><%= chunk.content %></div>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</div> 

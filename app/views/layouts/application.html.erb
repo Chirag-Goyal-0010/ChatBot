@@ -22,7 +22,24 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body>
-    <%= yield %>
+  <body class="bg-gray-50 min-h-screen">
+    <nav class="bg-blue-600 py-4 px-8 shadow text-white">
+      <div class="container mx-auto flex items-center justify-between">
+        <span class="font-bold text-xl">Chatbot</span>
+        <div>
+          <%= link_to 'Submit URL', root_path, class: "mr-4 hover:underline" %>
+          <%= link_to 'View URLs', websites_path, class: "hover:underline" %>
+        </div>
+      </div>
+    </nav>
+    <main class="container mx-auto mt-12 px-5 flex flex-col">
+      <% flash.each do |key, value| %>
+        <div class="mb-4 px-4 py-2 rounded text-white <%=
+          key == 'notice' ? 'bg-green-500' : 'bg-red-500' %>">
+          <%= value %>
+        </div>
+      <% end %>
+      <%= yield %>
+    </main>
   </body>
 </html>
