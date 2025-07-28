@@ -2,6 +2,8 @@ Rails.application.routes.draw do
   root 'websites#new'
   resources :websites, only: [:new, :create, :index]
   post 'websites/ask', to: 'websites#ask', as: :ask_website
+  get 'websites/answer', to: 'websites#answer', as: :answer_website
+  post 'websites/answer', to: 'websites#answer'
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
