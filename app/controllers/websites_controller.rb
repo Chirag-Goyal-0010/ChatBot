@@ -79,6 +79,8 @@ class WebsitesController < ApplicationController
       search_result = search_service.search(question, limit: 5)
       
       if search_result[:success] && search_result[:chunks].any?
+        Rails.logger.info("Found #{search_result[:chunks].count} relevant chunks")
+        
         # Format chunks for OpenAI prompt
         chunks_text = format_chunks_for_prompt(search_result[:chunks])
         
@@ -91,6 +93,8 @@ class WebsitesController < ApplicationController
           chunks: search_result[:chunks],
           success: true
         }
+        
+        Rails.logger.info("Final @answer: #{@answer.inspect}")
       else
         @answer = {
           question: question,
@@ -112,6 +116,7 @@ class WebsitesController < ApplicationController
     respond_to do |format|
       format.html { render :answer }
       format.json { render json: @answer }
+      format.turbo_stream { render :answer }
     end
   end
 
@@ -145,6 +150,9 @@ class WebsitesController < ApplicationController
       Please provide a clear, helpful answer based on the information above. If the information doesn't contain enough details to answer the question, say so.
     PROMPT
 
+    Rails.logger.info("Generating AI answer for question: #{question}")
+    Rails.logger.info("Using chunks: #{chunks_text[0..200]}...")
+
     response = client.chat(parameters: {
       model: "gpt-3.5-turbo",
       messages: [
@@ -155,7 +163,9 @@ class WebsitesController < ApplicationController
       temperature: 0.7
     })
 
-    response.dig("choices", 0, "message", "content") || "Sorry, I couldn't generate an answer."
+    ai_answer = response.dig("choices", 0, "message", "content") || "Sorry, I couldn't generate an answer."
+    Rails.logger.info("AI Answer generated: #{ai_answer[0..100]}...")
+    ai_answer
   rescue => e
     Rails.logger.error("OpenAI completion failed: #{e.message}")
     "Sorry, I encountered an error while generating the answer."

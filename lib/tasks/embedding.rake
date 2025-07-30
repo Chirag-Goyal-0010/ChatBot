@@ -24,7 +24,7 @@ namespace :embedding do
     
     if total_chunks == 0
       puts "✅ All chunks already have embeddings!"
-      return
+      next
     end
     
     puts "Found #{total_chunks} chunks without embeddings. Starting batch processing..."

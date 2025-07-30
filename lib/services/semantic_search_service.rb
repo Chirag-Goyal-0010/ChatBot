@@ -47,8 +47,7 @@ class SemanticSearchService
           id: chunk.id,
           content: chunk.content,
           section: chunk.section,
-          website_url: chunk.website.url,
-          similarity_score: chunk.similarity_score # if available
+          website_url: chunk.website.url
         }
       end
     end

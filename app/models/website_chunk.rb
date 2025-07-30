@@ -6,9 +6,6 @@ class WebsiteChunk < ApplicationRecord
   
   validates :content, presence: true
   validates :embedding, presence: true, on: :update
-  
-  # Ensure proper vector serialization
-  serialize :embedding, Array, if: -> { embedding.present? }
 
   # Semantic search method using pgvector cosine distance
   def self.similar_chunks(question, limit: 5)
