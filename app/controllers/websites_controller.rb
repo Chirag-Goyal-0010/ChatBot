@@ -1,35 +1,22 @@
-require Rails.root.join('lib', 'services', 'nokogiri_scraper')
-require Rails.root.join('lib', 'services', 'puppeteer_scraper')
+require 'timeout'
 
 class WebsitesController < ApplicationController
+  before_action :sanitize_question_params, only: [:ask, :answer]
+  before_action :sanitize_url_params, only: [:create]
   def new
     @website = Website.new
   end
 
   def create
     @website = Website.new(website_params)
-    @website.url = @website.url.strip if @website.url.present?
+    
     if @website.save
-      flash[:notice] = 'Website URL submitted successfully! Scraping in progress...'
-      # Start scraping synchronously
-      chunks = NokogiriScraper.scrape(@website.url)
-      if chunks.nil? || chunks.empty?
-        chunks = PuppeteerScraper.scrape(@website.url)
-        flash[:alert] = 'Static scraping failed, used dynamic scraping.' if chunks
-      end
-      if chunks && !chunks.empty?
-        chunks.each_with_index do |chunk, idx|
-          WebsiteChunk.create!(website: @website, content: chunk[:content], section: chunk[:section], position: idx)
-        end
-        flash[:notice] = 'Scraping completed and content saved.'
-      else
-        flash[:alert] = 'Scraping failed for this website.'
-        Rails.logger.error("Scraping failed for website ID: #{@website.id}, URL: #{@website.url}")
-      end
+      # Start background scraping job
+      WebsiteScrapingJob.perform_later(@website.id)
+      flash[:notice] = 'Website URL submitted successfully! Scraping has started in the background.'
       redirect_to websites_path
     else
-      flash.now[:alert] = 'Invalid URL. Please try again.'
-      render :new
+      standardized_error_response('Invalid URL. Please try again.', details: @website.errors)
     end
   end
 
@@ -67,47 +54,15 @@ class WebsitesController < ApplicationController
     # POST request - process the question
     question = params[:question]
     
-    if question.blank?
-      flash[:alert] = "Please provide a question."
-      redirect_to answer_website_path and return
-    end
-    
     begin
-      # Use semantic search to find relevant chunks
-      require Rails.root.join('lib', 'services', 'semantic_search_service')
-      search_service = SemanticSearchService.new
-      search_result = search_service.search(question, limit: 5)
-      
-      if search_result[:success] && search_result[:chunks].any?
-        Rails.logger.info("Found #{search_result[:chunks].count} relevant chunks")
-        
-        # Format chunks for OpenAI prompt
-        chunks_text = format_chunks_for_prompt(search_result[:chunks])
-        
-        # Get AI answer using OpenAI completion
-        ai_answer = generate_ai_answer(question, chunks_text)
-        
-        @answer = {
-          question: question,
-          answer: ai_answer,
-          chunks: search_result[:chunks],
-          success: true
-        }
-        
-        Rails.logger.info("Final @answer: #{@answer.inspect}")
-      else
-        @answer = {
-          question: question,
-          answer: "I don't have enough information to answer that question.",
-          chunks: [],
-          success: false
-        }
-      end
+      # Use the service to generate the answer
+      service = AnswerGenerationService.new(question)
+      @answer = service.generate_answer
     rescue => e
       Rails.logger.error("Answer generation failed: #{e.message}")
       @answer = {
         question: question,
-        answer: "Sorry, I encountered an error while processing your question.",
+        answer: "Sorry, I encountered an error while processing your question. Please try again in a moment.",
         chunks: [],
         success: false
       }
@@ -115,8 +70,14 @@ class WebsitesController < ApplicationController
     
     respond_to do |format|
       format.html { render :answer }
+      format.turbo_stream { 
+        render turbo_stream: [
+          turbo_stream.replace("ai-response", partial: "ai_answer", locals: { answer: @answer }),
+          turbo_stream.update("loading-indicator", ""),
+          turbo_stream.update("question-input", "")
+        ]
+      }
       format.json { render json: @answer }
-      format.turbo_stream { render :answer }
     end
   end
 
@@ -126,48 +87,48 @@ class WebsitesController < ApplicationController
     params.require(:website).permit(:url, :status)
   end
 
-  # Format chunks for OpenAI prompt
-  def format_chunks_for_prompt(chunks)
-    chunks.map.with_index(1) do |chunk, index|
-      "Source #{index}:\n#{chunk.content}\n"
-    end.join("\n")
+  def sanitize_question_params
+    if params[:question].present?
+      # Remove potentially harmful characters and limit length
+      params[:question] = ActionController::Base.helpers.sanitize(
+        params[:question].to_s.strip[0..1000],
+        tags: [],
+        attributes: []
+      )
+      
+      # Block if question is empty after sanitization
+      if params[:question].blank?
+        standardized_error_response("Please enter a valid question.")
+        return
+      end
+    end
   end
 
-  # Generate AI answer using OpenAI completion API
-  def generate_ai_answer(question, chunks_text)
-    require 'openai'
-    
-    client = OpenAI::Client.new(access_token: ENV['OPENAI_API_KEY'])
-    
-    prompt = <<~PROMPT
-      You are a helpful AI assistant. Based on the following information, please answer the user's question.
-
-      Information:
-      #{chunks_text}
-
-      Question: #{question}
-
-      Please provide a clear, helpful answer based on the information above. If the information doesn't contain enough details to answer the question, say so.
-    PROMPT
-
-    Rails.logger.info("Generating AI answer for question: #{question}")
-    Rails.logger.info("Using chunks: #{chunks_text[0..200]}...")
-
-    response = client.chat(parameters: {
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: "You are a helpful AI assistant that answers questions based on provided information." },
-        { role: "user", content: prompt }
-      ],
-      max_tokens: 500,
-      temperature: 0.7
-    })
-
-    ai_answer = response.dig("choices", 0, "message", "content") || "Sorry, I couldn't generate an answer."
-    Rails.logger.info("AI Answer generated: #{ai_answer[0..100]}...")
-    ai_answer
-  rescue => e
-    Rails.logger.error("OpenAI completion failed: #{e.message}")
-    "Sorry, I encountered an error while generating the answer."
+  def sanitize_url_params
+    if params[:website] && params[:website][:url].present?
+      url = params[:website][:url].to_s.strip
+      
+      # Basic URL validation and sanitization
+      unless url.match?(/\A#{URI::regexp(['http', 'https'])}\z/)
+        # Try to fix common URL issues
+        url = "https://#{url}" unless url.start_with?('http')
+      end
+      
+      # Additional security checks
+      begin
+        uri = URI.parse(url)
+        # Block localhost, private IPs, and suspicious schemes
+        if uri.host&.match?(/localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
+           !['http', 'https'].include?(uri.scheme)
+          standardized_error_response("Invalid or restricted URL. Please use a public HTTP/HTTPS URL.")
+          return
+        end
+        
+        params[:website][:url] = uri.to_s
+      rescue URI::InvalidURIError
+        standardized_error_response("Invalid URL format. Please enter a valid URL.")
+        return
+      end
+    end
   end
 end

@@ -8,3 +8,39 @@
  *
  * Consider organizing styles into separate files for maintainability.
  */
+
+/* Force icon sizes to be small */
+.w-8.h-8 svg {
+  width: 1rem !important;
+  height: 1rem !important;
+  max-width: 1rem !important;
+  max-height: 1rem !important;
+}
+
+.w-4.h-4 {
+  width: 1rem !important;
+  height: 1rem !important;
+  max-width: 1rem !important;
+  max-height: 1rem !important;
+}
+
+/* Override any large icon sizes */
+[class*="w-"] [class*="h-"] svg {
+  max-width: 1.5rem !important;
+  max-height: 1.5rem !important;
+}
+
+/* Ensure error messages are properly sized */
+.bg-red-100 svg {
+  width: 16px !important;
+  height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+}
+
+/* Prevent any large icons in error messages */
+.bg-red-100 .flex-shrink-0 {
+  flex-shrink: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+}

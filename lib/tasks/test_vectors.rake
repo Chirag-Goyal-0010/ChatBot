@@ -1,4 +1,4 @@
-require Rails.root.join('lib', 'services', 'embedding_service')
+# Ensure the application service is loaded via autoload paths
 
 namespace :vectors do
   desc 'Test vector storage and retrieval functionality'

@@ -55,29 +55,6 @@ class SemanticSearchService
     result
   end
 
-  # Test the semantic search service
-  def self.test_search
-    service = new
-    
-    test_questions = [
-      "What types of products do you sell?",
-      "Tell me about your services",
-      "What is your company about?"
-    ]
-    
-    results = []
-    test_questions.each do |question|
-      result = service.search(question, limit: 3)
-      results << {
-        question: question,
-        success: result[:success],
-        chunk_count: result[:chunks].count
-      }
-    end
-    
-    results
-  end
-
   private
 
   def validate_api_key!
@@ -91,4 +68,4 @@ class SemanticSearchService
       raise "Question must be a non-empty string"
     end
   end
-end 
+end

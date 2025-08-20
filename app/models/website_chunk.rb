@@ -1,15 +1,30 @@
-require Rails.root.join('lib', 'services', 'embedding_service')
-
 class WebsiteChunk < ApplicationRecord
   belongs_to :website
-  before_save :generate_embedding, if: -> { content_changed? }
   
   validates :content, presence: true
   validates :embedding, presence: true, on: :update
+  
+  # Check if vector search is available
+  def self.vector_search_available?
+    return @vector_search_available if defined?(@vector_search_available)
+    
+    @vector_search_available = begin
+      connection.column_exists?(:website_chunks, :embedding) &&
+      connection.columns(:website_chunks).find { |c| c.name == 'embedding' }&.sql_type&.include?('vector')
+    rescue => e
+      Rails.logger.warn "Could not check vector availability: #{e.message}"
+      false
+    end
+  end
 
   # Semantic search method using pgvector cosine distance
   def self.similar_chunks(question, limit: 5)
     return none unless question.present?
+    
+    unless vector_search_available?
+      Rails.logger.warn "Vector search not available - falling back to text search"
+      return text_search_fallback(question, limit)
+    end
     
     begin
       # Generate embedding for the question
@@ -17,39 +32,42 @@ class WebsiteChunk < ApplicationRecord
       question_embedding = service.embed(question)
       
       # Use pgvector cosine distance operator
-      order(Arel.sql("embedding <=> '[#{question_embedding.join(',')}]' ASC"))
+      where.not(embedding: nil)
+        .order(Arel.sql("embedding <=> #{ActiveRecord::Base.connection.quote(question_embedding)} ASC"))
         .limit(limit)
     rescue => e
       Rails.logger.error("Semantic search failed: #{e.message}")
-      none
+      text_search_fallback(question, limit)
     end
   end
-
-  private
-
-  def generate_embedding
-    begin
-      service = EmbeddingService.new
-      embedding_array = service.embed(content)
-      
-      if embedding_array && embedding_array.is_a?(Array) && embedding_array.length == 1536
-        # Convert array to pgvector format
-        self.embedding = "[#{embedding_array.join(',')}]"
-      else
-        errors.add(:embedding, "Failed to generate valid embedding")
-        throw(:abort)
-      end
-    rescue => e
-      errors.add(:embedding, "Error generating embedding: #{e.message}")
-      throw(:abort)
-    end
+  
+  # Fallback text search when vector search is unavailable
+  def self.text_search_fallback(question, limit: 5)
+    keywords = question.downcase.split(/\W+/).reject(&:blank?)
+    return none if keywords.empty?
+    
+    query = keywords.map { |keyword| "content ILIKE ?" }.join(" OR ")
+    params = keywords.map { |keyword| "%#{keyword}%" }
+    
+    where(query, *params)
+      .order(created_at: :desc)
+      .limit(limit)
   end
+
+
 
   # Returns the top N most similar chunks to the given embedding
   def self.similar_to(embedding, limit: 5)
     return none unless embedding.is_a?(Array) && embedding.length == 1536
     
-    order(Arel.sql("embedding <-> '[#{embedding.join(',')}]' ASC")).limit(limit)
+    unless vector_search_available?
+      Rails.logger.warn "Vector search not available for similarity search"
+      return limit(limit)
+    end
+    
+    where.not(embedding: nil)
+      .order(Arel.sql("embedding <=> #{ActiveRecord::Base.connection.quote(embedding)} ASC"))
+      .limit(limit)
   end
   
   # Test method to verify vector storage

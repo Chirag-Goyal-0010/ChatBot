@@ -1,4 +1,18 @@
 Rails.application.routes.draw do
+  # API Documentation
+  mount Rswag::Ui::Engine => '/api-docs'
+  mount Rswag::Api::Engine => '/api-docs'
+  
+  namespace :api do
+    namespace :v1 do
+      resources :websites, only: [:index, :create] do
+        collection do
+          post :answer
+        end
+      end
+    end
+  end
+
   root 'websites#new'
   resources :websites, only: [:new, :create, :index]
   post 'websites/ask', to: 'websites#ask', as: :ask_website

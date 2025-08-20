@@ -4,11 +4,19 @@ namespace :embedding do
     require_relative '../../app/models/website_chunk'
     require_relative '../services/embedding_service'
 
-    WebsiteChunk.where(embedding: nil).find_each do |chunk|
-      puts "Generating embedding for chunk ##{chunk.id}..."
-      chunk.save! # triggers before_save callback
+    chunks = WebsiteChunk.where(embedding: nil)
+    if chunks.count.zero?
+      puts 'No chunks need embeddings.'
+      next
     end
-    puts 'Embedding generation complete.'
+
+    puts "Generating embeddings for #{chunks.count} chunks..."
+    results = EmbeddingService.batch_embed_chunks(chunks)
+    puts "Done. Success: #{results[:success]}, Failed: #{results[:failed]}"
+    if results[:errors].any?
+      puts 'Errors:'
+      results[:errors].each { |e| puts "  - #{e}" }
+    end
   end
 
   desc 'Embed all previously scraped WebsiteChunk records'

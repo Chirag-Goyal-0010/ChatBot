@@ -1,0 +1,414 @@
+---
+openapi: 3.0.1
+info:
+  title: AI Chatbot API
+  version: v1
+  description: |
+    A Rails application that scrapes websites, processes content using AI embeddings, 
+    and provides intelligent answers to user questions based on the scraped content.
+    
+    ## Features
+    - **Website Scraping**: Automatically scrapes websites using both static and dynamic methods
+    - **AI-Powered Q&A**: Uses OpenAI embeddings and GPT for semantic search and answer generation
+    - **Vector Search**: Implements semantic search using PostgreSQL with pgvector extension
+    - **Rate Limited**: Protected with intelligent rate limiting
+    - **Cached Responses**: Optimized with multi-layer caching strategy
+    
+  contact:
+    name: AI Chatbot Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+- url: http://localhost:3000
+  description: Development server
+- url: https://your-domain.com
+  description: Production server
+
+paths:
+  /websites:
+    get:
+      summary: List all websites
+      description: Retrieve a list of all scraped websites with their status and associated chunks
+      tags:
+        - Websites
+      parameters:
+        - name: question
+          in: query
+          description: Filter results by question (used for displaying search results)
+          required: false
+          schema:
+            type: string
+            example: "What is machine learning?"
+        - name: chunks
+          in: query
+          description: Comma-separated list of chunk IDs to display
+          required: false
+          schema:
+            type: string
+            example: "1,2,3"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML page with websites list
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Submit a website for scraping
+      description: Submit a website URL to be scraped and processed for AI question answering
+      tags:
+        - Websites
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                website:
+                  type: object
+                  properties:
+                    url:
+                      type: string
+                      format: uri
+                      description: The website URL to scrape
+                      example: "https://example.com"
+                    status:
+                      type: string
+                      enum: [active, inactive, processing, failed]
+                      description: Initial status of the website
+                      example: "active"
+                  required:
+                    - url
+              required:
+                - website
+      responses:
+        '302':
+          description: Redirect to websites index after successful submission
+        '422':
+          description: Validation error
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML form with validation errors
+        '400':
+          description: Bad request - invalid URL or restricted URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
+
+  /websites/ask:
+    post:
+      summary: Ask a question (legacy endpoint)
+      description: Submit a question to find relevant content chunks (legacy endpoint, use /websites/answer instead)
+      tags:
+        - AI Questions
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                  description: The question to search for
+                  example: "What is artificial intelligence?"
+                  maxLength: 1000
+              required:
+                - question
+      responses:
+        '302':
+          description: Redirect to websites index with search results
+        '400':
+          description: Invalid question format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (20 requests per hour)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
+
+  /websites/answer:
+    get:
+      summary: Show AI answer form
+      description: Display the form for submitting questions to the AI
+      tags:
+        - AI Questions
+      responses:
+        '200':
+          description: AI answer form page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML form for AI questions
+    post:
+      summary: Get AI-powered answer
+      description: |
+        Submit a question and receive an AI-generated answer based on scraped website content.
+        This endpoint uses semantic search to find relevant content and generates contextual answers.
+      tags:
+        - AI Questions
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                  description: The question to ask the AI
+                  example: "How does machine learning work?"
+                  maxLength: 1000
+                  minLength: 1
+              required:
+                - question
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                  description: The question to ask the AI
+                  example: "How does machine learning work?"
+                  maxLength: 1000
+                  minLength: 1
+              required:
+                - question
+      responses:
+        '200':
+          description: Successful AI response
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML page with AI answer
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIResponse'
+            application/vnd.turbo-stream.html:
+              schema:
+                type: string
+                description: Turbo Stream response for real-time updates
+        '400':
+          description: Invalid question or missing content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '408':
+          description: Request timeout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (20 requests per hour)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
+        '503':
+          description: AI service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /up:
+    get:
+      summary: Health check endpoint
+      description: Check if the application is running and healthy
+      tags:
+        - System
+      responses:
+        '200':
+          description: Application is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ok"
+        '500':
+          description: Application is unhealthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "error"
+
+components:
+  schemas:
+    Website:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the website
+          example: 1
+        url:
+          type: string
+          format: uri
+          description: The website URL
+          example: "https://example.com"
+        status:
+          type: string
+          enum: [active, inactive, processing, failed]
+          description: Current status of the website
+          example: "active"
+        created_at:
+          type: string
+          format: date-time
+          description: When the website was added
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: When the website was last updated
+          example: "2024-01-15T10:30:00Z"
+      required:
+        - id
+        - url
+        - status
+        - created_at
+        - updated_at
+
+    WebsiteChunk:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the chunk
+          example: 1
+        content:
+          type: string
+          description: The text content of the chunk
+          example: "Machine learning is a subset of artificial intelligence..."
+        section:
+          type: string
+          description: The section or heading this content belongs to
+          example: "Introduction to AI"
+        position:
+          type: integer
+          description: Position of the chunk within the website
+          example: 1
+        website_id:
+          type: integer
+          description: ID of the parent website
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          description: When the chunk was created
+          example: "2024-01-15T10:30:00Z"
+      required:
+        - id
+        - content
+        - website_id
+        - created_at
+
+    AIResponse:
+      type: object
+      properties:
+        question:
+          type: string
+          description: The original question asked
+          example: "What is machine learning?"
+        answer:
+          type: string
+          description: The AI-generated answer
+          example: "Machine learning is a subset of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed..."
+        chunks:
+          type: array
+          description: The relevant content chunks used to generate the answer
+          items:
+            $ref: '#/components/schemas/WebsiteChunk'
+        success:
+          type: boolean
+          description: Whether the request was successful
+          example: true
+        timestamp:
+          type: integer
+          description: Unix timestamp of when the answer was generated
+          example: 1642248600
+      required:
+        - question
+        - answer
+        - chunks
+        - success
+        - timestamp
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid URL format"
+        message:
+          type: string
+          description: Detailed error description
+          example: "The provided URL is not in a valid format. Please provide a valid HTTP or HTTPS URL."
+      required:
+        - error
+
+    RateLimitError:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Rate limit error message
+          example: "Rate limit exceeded"
+        message:
+          type: string
+          description: Detailed rate limit message
+          example: "Too many requests. Please try again later."
+        retry_after:
+          type: integer
+          description: Number of seconds to wait before retrying
+          example: 3600
+      required:
+        - error
+        - message
+        - retry_after
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication (if implemented)
+
+security: []
+
+tags:
+  - name: Websites
+    description: Website management and scraping operations
+  - name: AI Questions
+    description: AI-powered question answering endpoints
+  - name: System
+    description: System health and monitoring endpoints

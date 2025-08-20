@@ -23,5 +23,14 @@ module Chatbot
     #
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
+    
+    # Use Ruby schema format for better compatibility
+    config.active_record.schema_format = :ruby
+    
+    # Enable Rack::Attack middleware
+    config.middleware.use Rack::Attack
+    
+    # Fix Ruby 3.4 compatibility with frozen arrays
+    config.autoloader = :zeitwerk
   end
 end

@@ -25,7 +25,7 @@ gem "tzinfo-data", platforms: %i[ windows jruby ]
 
 # Use the database-backed adapters for Rails.cache, Active Job, and Action Cable
 gem "solid_cache"
-gem "solid_queue"
+gem "sidekiq"
 gem "solid_cable"
 
 # Reduces boot times through caching; required in config/boot.rb
@@ -50,6 +50,13 @@ group :development, :test do
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
   gem 'dotenv-rails', groups: [:development, :test]
+  
+  # Testing gems
+  gem 'rspec-rails'
+  gem 'factory_bot_rails'
+  gem 'faker'
+  gem 'webmock'
+  gem 'vcr'
 end
 
 group :development do
@@ -61,6 +68,8 @@ group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem "capybara"
   gem "selenium-webdriver"
+  gem 'shoulda-matchers'
+  gem 'database_cleaner-active_record'
 end
 
 gem "url_validation", "~> 1.2"
@@ -68,3 +77,16 @@ gem "tailwindcss-rails", "~> 4.3"
 gem 'nokogiri'
 gem 'puppeteer-ruby'
 gem 'ruby-openai'
+gem 'redcarpet'
+gem 'pgvector', '~> 0.3.2'
+gem 'retries'
+
+# Rate limiting and monitoring
+gem 'rack-attack'
+gem 'sentry-ruby'
+gem 'sentry-rails'
+
+# API documentation
+gem 'rswag'
+gem 'rswag-api'
+gem 'rswag-ui'

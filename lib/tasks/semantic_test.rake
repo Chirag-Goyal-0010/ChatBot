@@ -1,7 +1,6 @@
 namespace :semantic do
   desc 'Test semantic search in isolation'
   task test: :environment do
-    require_relative '../services/semantic_search_service'
     
     puts "=== Testing Semantic Search ==="
     puts
@@ -68,7 +67,6 @@ namespace :semantic do
   
   desc 'Test semantic search with specific question'
   task :test_question, [:question] => :environment do |task, args|
-    require_relative '../services/semantic_search_service'
     
     question = args[:question] || "What types of products do you sell?"
     puts "Testing semantic search with question: '#{question}'"

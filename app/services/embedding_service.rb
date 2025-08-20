@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'openai'
+require 'retries'
 
 class EmbeddingService
   MODEL = 'text-embedding-3-small'
@@ -15,16 +16,32 @@ class EmbeddingService
   def embed(text)
     validate_input!(text)
     
-    response = @client.embeddings(parameters: {
-      model: MODEL,
-      input: text
-    })
+    # Check cache first
+    cached_embedding = CachingService.get_cached_embedding(text)
+    return cached_embedding if cached_embedding
     
-    embedding = response.dig('data', 0, 'embedding')
+    embedding = with_retries(
+      max_tries: 3,
+      base_sleep_seconds: 1,
+      max_sleep_seconds: 5,
+      rescue: [Net::TimeoutError, Net::ReadTimeout, OpenAI::Error]
+    ) do
+      response = @client.embeddings(parameters: {
+        model: MODEL,
+        input: text
+      })
+      
+      response.dig('data', 0, 'embedding')
+    end
+    
     validate_embedding!(embedding)
+    
+    # Cache the embedding
+    CachingService.cache_embedding(text, embedding)
+    
     embedding
   rescue => e
-    Rails.logger.error("Embedding generation failed: #{e.message}")
+    Rails.logger.error("Embedding generation failed after retries: #{e.message}")
     raise "Failed to generate embedding: #{e.message}"
   end
 
@@ -34,7 +51,7 @@ class EmbeddingService
     
     begin
       embedding_array = embed(chunk.content)
-      chunk.update!(embedding: "[#{embedding_array.join(',')}]")
+      chunk.update!(embedding: embedding_array)
       true
     rescue => e
       Rails.logger.error("Failed to insert embedding for chunk #{chunk.id}: #{e.message}")
@@ -62,15 +79,12 @@ class EmbeddingService
   # Given a user question, returns the top N most similar WebsiteChunks
   def self.find_similar_chunks(question, limit: 5)
     validate_question!(question)
-    
+
+    # Compute embedding for the question and use similarity search
     embedding = new.embed(question)
     chunks = WebsiteChunk.similar_to(embedding, limit: limit)
-    
-    if chunks.empty?
-      nil
-    else
-      chunks
-    end
+
+    chunks.present? ? chunks : nil
   rescue => e
     Rails.logger.error("Similarity search failed: #{e.message}")
     nil
@@ -133,4 +147,4 @@ class EmbeddingService
       raise "Question must be a non-empty string"
     end
   end
-end 
+end
